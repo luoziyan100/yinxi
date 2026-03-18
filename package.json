@@ -1,0 +1,35 @@
+{
+  "name": "yinxi",
+  "version": "0.1.0",
+  "description": "An open-source AI coding agent for the terminal",
+  "type": "module",
+  "bin": {
+    "yinxi": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "start": "node dist/index.js"
+  },
+  "keywords": [
+    "ai",
+    "agent",
+    "coding",
+    "cli",
+    "claude"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.39.0",
+    "chalk": "^5.4.1",
+    "glob": "^11.0.1",
+    "marked": "^9.1.6",
+    "marked-terminal": "^6.2.0",
+    "openai": "^6.27.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.7.0"
+  }
+}
