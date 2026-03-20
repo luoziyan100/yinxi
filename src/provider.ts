@@ -75,7 +75,10 @@ async function* streamAnthropic(
   messages: Message[],
   signal?: AbortSignal
 ): AsyncGenerator<AgentEvent> {
-  const client = new Anthropic({ apiKey: config.apiKey });
+  const client = new Anthropic({
+    apiKey: config.apiKey,
+    ...(config.baseUrl && { baseURL: config.baseUrl }),
+  });
   const anthropicMessages = messagesToAnthropicFormat(messages);
   const anthropicTools = toolsToAnthropicFormat(config.tools);
 
