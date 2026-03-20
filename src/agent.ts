@@ -68,6 +68,13 @@ export class Agent {
   }
 
   /**
+   * Update runtime config (e.g. after switching provider or model).
+   */
+  updateConfig(partial: Partial<Pick<AgentConfig, "model" | "provider" | "apiKey" | "baseUrl">>): void {
+    Object.assign(this.config, partial);
+  }
+
+  /**
    * Subscribe to agent events for real-time UI updates.
    */
   subscribe(listener: EventListener): () => void {
