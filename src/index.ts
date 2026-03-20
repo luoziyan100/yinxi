@@ -12,7 +12,7 @@ import { Agent } from "./agent.js";
 import { createAllTools, createAllToolsWithAgent } from "./tools/index.js";
 import { buildSystemPrompt } from "./system-prompt.js";
 import { renderEvent, printBanner, printPrompt, configureRenderer } from "./ui/terminal.js";
-import { loadConfig, setupWizard, CONFIG_FILE } from "./config.js";
+import { loadConfig, setupWizard, switchProvider, listProviders, applyEnvOverrides, CONFIG_FILE } from "./config.js";
 import {
   createSession,
   loadSession,
@@ -402,7 +402,8 @@ function runInteractive(agent: Agent, model: string, cwd: string, resumedMessage
           ["/usage", "Show token usage and cost"],
           ["/files", "Show files modified this session"],
           ["/sessions", "List saved sessions"],
-          ["/config", "Show current configuration"],
+          ["/provider", "List or switch provider (/provider <name>)"],
+          ["/config", "Show all providers and config"],
           ["/help", "Show this help"],
           ["exit", "Quit Yinxi"],
         ];
@@ -476,20 +477,98 @@ function runInteractive(agent: Agent, model: string, cwd: string, resumedMessage
       }
 
       if (trimmed === "/model" || trimmed.startsWith("/model ")) {
+        // Helper: detect provider from model name
+        const detectProvider = (m: string): "anthropic" | "responses" => m.startsWith("claude") ? "anthropic" : "responses";
+
+        // Helper: apply model switch to agent
+        const applyModelSwitch = (newModel: string) => {
+          model = newModel;
+          agent.updateConfig({ model: newModel, provider: detectProvider(newModel) });
+        };
+
         const newModel = trimmed.replace("/model", "").trim();
         if (newModel) {
-          model = newModel;
-          (agent as any).config.model = newModel;
-          // Auto-detect provider from model name
-          if (newModel.startsWith("claude")) {
-            (agent as any).config.provider = "anthropic";
-            console.log(`\n  Model switched to: ${model} (provider: anthropic)\n`);
-          } else {
-            console.log(`\n  Model switched to: ${model}\n`);
-          }
+          applyModelSwitch(newModel);
+          console.log(`\n  ${chalk.green("●")} Model → ${chalk.cyan(model)}\n`);
         } else {
-          console.log(`\n  Current model: ${model}`);
-          console.log(chalk.dim(`  Use /model <name> to switch.\n`));
+          // Interactive model selection
+          const providers = await listProviders();
+          const activeProvider = providers.find(p => p.active);
+
+          const models = [
+            ["gpt-4.1", "OpenAI GPT-4.1"],
+            ["gpt-4.1-mini", "OpenAI GPT-4.1 Mini"],
+            ["gpt-4.1-nano", "OpenAI GPT-4.1 Nano"],
+            ["o4-mini", "OpenAI o4-mini (reasoning)"],
+            ["claude-sonnet-4-20250514", "Anthropic Sonnet 4"],
+            ["claude-opus-4-6", "Anthropic Opus 4.6"],
+            ["deepseek-chat", "DeepSeek V3"],
+            ["deepseek-reasoner", "DeepSeek R1"],
+          ];
+
+          console.log();
+          console.log(`  ${chalk.bold("Current:")} ${chalk.cyan(model)} ${chalk.dim("on")} ${chalk.cyan(activeProvider?.name || "unknown")}`);
+          console.log();
+
+          // Provider section
+          if (providers.length > 1) {
+            console.log(`  ${chalk.bold("Providers")}`);
+            console.log(chalk.dim("  " + "─".repeat(44)));
+            providers.forEach((p, i) => {
+              const marker = p.active ? chalk.green("●") : chalk.dim("○");
+              const key = chalk.bold.white(`p${i + 1}`);
+              console.log(`  ${key} ${marker} ${chalk.cyan(p.name.padEnd(14))} ${chalk.dim(p.config.base_url || "(default)")}`);
+            });
+            console.log();
+          }
+
+          // Model section
+          console.log(`  ${chalk.bold("Models")}`);
+          console.log(chalk.dim("  " + "─".repeat(44)));
+          models.forEach(([id, desc], i) => {
+            const current = id === model ? chalk.green(" ←") : "";
+            const key = chalk.bold.white(`${i + 1}`);
+            console.log(`  ${key.padStart(3)}  ${chalk.cyan(id.padEnd(28))} ${chalk.dim(desc)}${current}`);
+          });
+          console.log();
+          console.log(chalk.dim("  Enter number, p1/p2 for provider, or model name:"));
+
+          // Wait for interactive input
+          const choice = await new Promise<string>((resolve) => {
+            process.stdout.write(chalk.bold.magenta("  ❯ "));
+            rl.once("line", (line: string) => resolve(line.trim()));
+          });
+
+          if (!choice) {
+            // Empty = cancel
+          } else if (choice.match(/^p\d+$/i)) {
+            // Provider switch: p1, p2, etc.
+            const idx = parseInt(choice.slice(1), 10) - 1;
+            if (idx >= 0 && idx < providers.length) {
+              const target = providers[idx];
+              const newConfig = await switchProvider(target.name);
+              if (newConfig) {
+                model = newConfig.model;
+                agent.updateConfig({ model: newConfig.model, provider: newConfig.provider, apiKey: newConfig.api_key, baseUrl: newConfig.base_url });
+                console.log(`\n  ${chalk.green("●")} Provider → ${chalk.cyan(target.name)}, Model → ${chalk.cyan(model)}\n`);
+              }
+            } else {
+              console.log(chalk.dim(`\n  Invalid choice.\n`));
+            }
+          } else if (choice.match(/^\d+$/)) {
+            // Model number: 1-8
+            const idx = parseInt(choice, 10) - 1;
+            if (idx >= 0 && idx < models.length) {
+              applyModelSwitch(models[idx][0]);
+              console.log(`\n  ${chalk.green("●")} Model → ${chalk.cyan(model)}\n`);
+            } else {
+              console.log(chalk.dim(`\n  Invalid choice.\n`));
+            }
+          } else {
+            // Free text = model name
+            applyModelSwitch(choice);
+            console.log(`\n  ${chalk.green("●")} Model → ${chalk.cyan(model)}\n`);
+          }
         }
         askQuestion();
         return;
@@ -605,15 +684,53 @@ function runInteractive(agent: Agent, model: string, cwd: string, resumedMessage
 
       if (trimmed === "/config") {
         try {
-          const currentConfig = await loadConfig();
-          console.log(`\n  Configuration (${CONFIG_FILE}):`);
-          console.log(`    Provider: ${currentConfig.provider}`);
-          console.log(`    Model:    ${currentConfig.model}`);
-          console.log(`    API Key:  ${currentConfig.api_key ? "***" + currentConfig.api_key.slice(-4) : "(not set)"}`);
-          console.log(`    Base URL: ${currentConfig.base_url || "(default)"}`);
-          console.log(chalk.dim(`\n  Run "yinxi setup" to reconfigure.\n`));
+          const providers = await listProviders();
+          console.log(`\n  ${chalk.bold("Configuration")} (${CONFIG_FILE})`);
+          console.log(chalk.dim("  " + "─".repeat(50)));
+          for (const p of providers) {
+            const marker = p.active ? chalk.green(" ●") : chalk.dim(" ○");
+            const keyPreview = p.config.api_key ? "***" + p.config.api_key.slice(-4) : "(not set)";
+            console.log(`${marker} ${chalk.cyan(p.name.padEnd(16))} ${p.config.model.padEnd(20)} ${chalk.dim(keyPreview)}`);
+            if (p.config.base_url) {
+              console.log(chalk.dim(`                     ${p.config.base_url}`));
+            }
+          }
+          console.log(chalk.dim("  " + "─".repeat(50)));
+          console.log(chalk.dim(`  /provider <name> to switch, "yinxi setup" to add\n`));
         } catch {
           console.log("\n  Could not load config.\n");
+        }
+        askQuestion();
+        return;
+      }
+
+      if (trimmed === "/provider" || trimmed.startsWith("/provider ")) {
+        const targetName = trimmed.replace("/provider", "").trim();
+        if (!targetName) {
+          // List providers
+          const providers = await listProviders();
+          if (providers.length === 0) {
+            console.log("\n  No providers configured. Run \"yinxi setup\".\n");
+          } else {
+            console.log();
+            for (const p of providers) {
+              const marker = p.active ? chalk.green("● ") : chalk.dim("○ ");
+              console.log(`  ${marker}${chalk.cyan(p.name)} ${chalk.dim("—")} ${p.config.model} ${chalk.dim(p.config.base_url || "(default)")}`);
+            }
+            console.log(chalk.dim(`\n  /provider <name> to switch\n`));
+          }
+        } else {
+          const newConfig = await switchProvider(targetName);
+          if (!newConfig) {
+            const providers = await listProviders();
+            const names = providers.map(p => p.name).join(", ");
+            console.log(`\n  Provider "${targetName}" not found. Available: ${names}\n`);
+          } else {
+            // Update agent config
+            model = newConfig.model;
+            agent.updateConfig({ model: newConfig.model, provider: newConfig.provider, apiKey: newConfig.api_key, baseUrl: newConfig.base_url });
+            console.log(`\n  ${chalk.green("●")} Switched to ${chalk.cyan(targetName)}: ${newConfig.model} ${chalk.dim(newConfig.base_url || "(default)")}\n`);
+          }
         }
         askQuestion();
         return;
