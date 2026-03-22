@@ -10,7 +10,10 @@
     "build": "tsc",
     "dev": "tsc --watch",
     "start": "node dist/index.js",
-    "test": "vitest run"
+    "test": "vitest run",
+    "bench": "npx tsx benchmark/runner.ts",
+    "bench:basic": "npx tsx benchmark/runner.ts --category basic",
+    "bench:verbose": "npx tsx benchmark/runner.ts --verbose"
   },
   "keywords": [
     "ai",

@@ -1,0 +1,42 @@
+{
+  "model": "claude-sonnet-4-20250514",
+  "provider": "anthropic",
+  "timestamp": "2026-03-22T03:25:15.687Z",
+  "totalCases": 1,
+  "passed": 1,
+  "failed": 0,
+  "passRate": "100.0%",
+  "totalTokens": {
+    "input": 162610,
+    "output": 2344
+  },
+  "totalElapsedMs": 67727,
+  "results": [
+    {
+      "id": "reason-002",
+      "name": "Understand codebase and add feature",
+      "category": "reasoning",
+      "difficulty": "hard",
+      "pass": true,
+      "reason": "TOGGLE_SORT and UNDO actions work correctly",
+      "elapsedMs": 67727,
+      "tokens": {
+        "input": 162610,
+        "output": 2344
+      },
+      "toolCalls": 14
+    }
+  ],
+  "byCategory": {
+    "reasoning": {
+      "total": 1,
+      "passed": 1
+    }
+  },
+  "byDifficulty": {
+    "hard": {
+      "total": 1,
+      "passed": 1
+    }
+  }
+}
